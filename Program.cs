@@ -95,33 +95,39 @@ namespace OpusMutatum {
 				}
 			}
 
-			switch(action){
-				case RunAction.Strings:
-					HandleStrings();
-					break;
-				case RunAction.Intermediary:
-					HandleIntermediary();
-					break;
-				case RunAction.Merge:
-					HandleMerge();
-					break;
-				case RunAction.Setup:
-					HandleStrings();
-					HandleIntermediary();
-					HandleMerge();
-					break;
-				case RunAction.DevExe:
-					HandleDevExe();
-					break;
-				case RunAction.DevToRun:
-					HandleDevToRun();
-					break;
-				case RunAction.Run:
-				default:
-					HandleRun();
-					break;
+			try {
+				switch(action) {
+					case RunAction.Strings:
+						HandleStrings();
+						break;
+					case RunAction.Intermediary:
+						HandleIntermediary();
+						break;
+					case RunAction.Merge:
+						HandleMerge();
+						break;
+					case RunAction.Setup:
+						HandleStrings();
+						HandleIntermediary();
+						HandleMerge();
+						break;
+					case RunAction.DevExe:
+						HandleDevExe();
+						break;
+					case RunAction.DevToRun:
+						HandleDevToRun();
+						break;
+					case RunAction.Run:
+					default:
+						HandleRun();
+						break;
+				}
+			} catch(Exception e) {
+				Console.WriteLine("Error executing task:");
+				Console.WriteLine(e.Message);
+				Console.WriteLine(e.StackTrace);
 			}
-			Console.WriteLine("Done!");
+			Console.WriteLine("Done.");
 		}
 
 		static void HandleRun(){
@@ -131,15 +137,10 @@ namespace OpusMutatum {
 		static void HandleStrings(){
 			Console.WriteLine("Dumping strings...");
 			LoadLightning();
-			// try not to mess up .NET Core refs and .NET Framework refs
-			var corlibReference = new AssemblyNameReference("mscorlib", new Version(4, 0, 0, 0)) {
-				PublicKeyToken = new byte[] { 0xb7, 0x7a, 0x5c, 0x56, 0x19, 0x34, 0xe0, 0x89 }
-			};
 			// take Lightning.exe, find all refs to string parser: "#=qQ3boY4a6o2O2sPtKvJtj_Q6y77XoLuLRv$4EsOcRQr4="."#=qhwVTryR65imID$n_uKTBPA=="
 			var module = LightningAssembly.MainModule;
-			module.AssemblyReferences.Add(corlibReference);
-			var parse = module.FindMethod("#=qQ3boY4a6o2O2sPtKvJtj_Q6y77XoLuLRv$4EsOcRQr4=", "#=qhwVTryR65imID$n_uKTBPA==");
-
+			var parse = module.FindMethod("\u0023\u003Dq2EPbWi4HZqbkGDFcUMi56ZzB8VAbZoGcTMgcY2RDY4U\u003D", "\u0023\u003DqhM7pxz5HnSshiTag67xAZg\u003D\u003D");
+			
 			Console.WriteLine("Finding keys...");
 			// get all the keys this way
 			var refs = new List<Instruction>();
@@ -154,24 +155,24 @@ namespace OpusMutatum {
 
 			foreach(var instr in refs)
 				keys.Add((int)instr.Previous.Operand);
+
+			Console.WriteLine($"Found {keys.Count()}");
 			
-			var mainMethod = module.FindMethod("#=q_e3xs_z$8e0$rkwhnKecaw==", "#=qikcmb9yEAoK5cFTS8A4N7Q==");
+			var mainMethod = module.FindMethod("\u0023\u003DqY_2YbNnFUotr2XEajflqbg\u003D\u003D", "\u0023\u003Dqv9BkCthwDUsuiNqUYPHVfA\u003D\u003D");
 			var proc = mainMethod.Body.GetILProcessor();
 			var first = proc.Body.Instructions.First();
 
 			var stringt = module.TypeSystem.String;
-			stringt.Resolve().Scope = corlibReference;
 
 			// we want String.Concat(String?, String?, String?)
 			Console.WriteLine("Resolving Concat method...");
 			var concat = module.ImportReference(stringt.Resolve().Methods.First(f => f.Parameters.Count == 3 && f.Parameters.All(p => p.ParameterType.FullName.Equals(stringt.FullName))));
 			Console.WriteLine("Getting StreamWriter class...");
 			var streamWriter = module.ImportReference(typeof(StreamWriter)).Resolve();
-			streamWriter.Scope = corlibReference;
 			Console.WriteLine("Getting StreamWriter constructor...");
 			var streamWriterConstructor = module.ImportReference(streamWriter.Methods.First(m => m.Name.Equals(".ctor") && m.Parameters.Count() == 1 && m.Parameters.All(param => param.ParameterType.FullName.Equals(stringt.FullName))));
 			Console.WriteLine("Getting WriteLine method...");
-			var writeLine = module.ImportReference(streamWriter.Methods.First(m => m.Name.Equals("WriteLine") && m.Parameters.Count == 1 && m.Parameters.All(p => p.ParameterType.FullName.Equals(stringt.FullName))));
+			var writeLine = module.ImportReference(streamWriter.BaseType.Resolve().Methods.First(m => m.Name.Equals("WriteLine") && m.Parameters.Count == 1 && m.Parameters.All(p => p.ParameterType.FullName.Equals(stringt.FullName))));
 			Console.WriteLine("Getting Dispose method...");
 			var dispose = module.ImportReference(streamWriter.FindMethod("Dispose"));
 
@@ -187,12 +188,9 @@ namespace OpusMutatum {
 				proc.InsertBefore(first, proc.Create(OpCodes.Call, concat));
 				proc.InsertBefore(first, proc.Create(OpCodes.Callvirt, writeLine));
 			}
+			proc.InsertBefore(first, proc.Create(OpCodes.Ldc_I4_1));
 			proc.InsertBefore(first, proc.Create(OpCodes.Callvirt, dispose));
 			proc.InsertBefore(first, proc.Create(OpCodes.Ret));
-
-			for(int i = module.AssemblyReferences.Count() - 1; i >= 0; i--)
-				if(module.AssemblyReferences.ElementAt(i).Name.Equals("System.Private.CoreLib"))
-					module.AssemblyReferences.RemoveAt(i);
 
 			Directory.CreateDirectory("./StringDumping");
 			module.Write("./StringDumping/Lightning.exe");
@@ -235,6 +233,7 @@ namespace OpusMutatum {
 		static void LoadLightning(){
 			Console.WriteLine("Reading Lightning.exe...");
 			LightningAssembly = AssemblyDefinition.ReadAssembly(PathToLightning);
+			Console.WriteLine(LightningAssembly == null ? "Failed to load Lightning.exe" : "Found Lightning executable: " + LightningAssembly.FullName);
 		}
 
 		static Collection<TypeDefinition> CollectNestedTypes(Collection<TypeDefinition> topLevel){
