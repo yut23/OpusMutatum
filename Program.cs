@@ -218,10 +218,20 @@ namespace OpusMutatum {
 					// so here we update those references ourself
 					if(method.Body != null && method.Body.Instructions != null)
 						foreach(var instr in method.Body.Instructions){
-							if(instr != null && instr.Operand is MethodReference mref && Intermediary.ContainsKey(mref.Name))
-								instr.Operand = new MethodReference(GetIntermediaryForName(mref.Name), mref.ReturnType, mref.DeclaringType);
-							if(instr != null && instr.Operand is FieldReference fref && fref.DeclaringType.ContainsGenericParameter && Intermediary.ContainsKey(fref.Name))
-								instr.Operand = new FieldReference(GetIntermediaryForName(fref.Name), fref.FieldType, fref.DeclaringType);
+							if(instr != null && instr.Operand is MethodReference mref && !mref.IsWindowsRuntimeProjection && Intermediary.ContainsKey(mref.Name)) {
+								try {
+									mref.Name = GetIntermediaryForName(mref.Name);
+								} catch(Exception) {
+									// it's a "method specification", just replace
+									if(!mref.Name.Equals(GetIntermediaryForName(mref.Name))) {
+										instr.Operand = new MethodReference(GetIntermediaryForName(mref.Name), mref.ReturnType, mref.DeclaringType);
+									}
+								}
+								// TODO: also take the oppurtunity to replace references to "class_19.method_67" with the actual string
+							}
+
+							if(instr != null && instr.Operand is FieldReference fref && Intermediary.ContainsKey(fref.Name))
+								fref.Name = (GetIntermediaryForName(fref.Name));//instr.Operand = new FieldReference(GetIntermediaryForName(fref.Name), fref.FieldType, fref.DeclaringType);
 						}
 					// TODO: map locals
 				}
