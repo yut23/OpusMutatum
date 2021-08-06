@@ -203,7 +203,11 @@ namespace OpusMutatum {
 			CollectIntermediary();
 			foreach(var type in CollectNestedTypes(LightningAssembly.MainModule.Types)){
 				type.Name = GetIntermediaryForName(type.Name);
-				type.IsPublic = true;
+				if(type.IsNested) {
+					type.IsNestedPublic = true;
+				} else {
+					type.IsPublic = true;
+				}
 				foreach(var method in type.Methods){
 					// rtspecialname is applied to constructors and operators
 					if(!method.IsRuntimeSpecialName)
@@ -214,7 +218,7 @@ namespace OpusMutatum {
 					// so here we update those references ourself
 					if(method.Body != null && method.Body.Instructions != null)
 						foreach(var instr in method.Body.Instructions){
-							if(instr != null && instr.Operand is MethodReference mref && mref.DeclaringType.ContainsGenericParameter && Intermediary.ContainsKey(mref.Name))
+							if(instr != null && instr.Operand is MethodReference mref && Intermediary.ContainsKey(mref.Name))
 								instr.Operand = new MethodReference(GetIntermediaryForName(mref.Name), mref.ReturnType, mref.DeclaringType);
 							if(instr != null && instr.Operand is FieldReference fref && fref.DeclaringType.ContainsGenericParameter && Intermediary.ContainsKey(fref.Name))
 								instr.Operand = new FieldReference(GetIntermediaryForName(fref.Name), fref.FieldType, fref.DeclaringType);
@@ -316,7 +320,7 @@ namespace OpusMutatum {
 		}
 
 		static void HandleDevExe(){
-			// take Lightning.exe, remap to named
+			// take IntermediaryLightning.exe, remap to named
 		}
 
 		static void HandleDevToRun(){
