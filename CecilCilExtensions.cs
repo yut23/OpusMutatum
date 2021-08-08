@@ -7,7 +7,7 @@ namespace OpusMutatum {
     public static class CecilCilExtensions {
 
         public static bool Matches(this Instruction instruction, OpCode opCode, object operand) {
-            return instruction.OpCode == opCode && Object.Equals(instruction.Operand, operand);
+            return instruction.OpCode == opCode && Equals(instruction.Operand, operand);
         }
 
         public static Instruction FindNext(this Instruction instruction, OpCode opCode) {

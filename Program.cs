@@ -30,6 +30,7 @@ namespace OpusMutatum {
 		static AssemblyDefinition LightningAssembly;
 
 		static Dictionary<string, string> Intermediary = new Dictionary<string, string>();
+		static Dictionary<int, string> Strings = new Dictionary<int, string>();
 
 		static void Main(string[] args){
 			ArgumentParsingMode current = ArgumentParsingMode.Argument;
@@ -93,6 +94,10 @@ namespace OpusMutatum {
 						Console.WriteLine("Invalid argument \"" + arg + "\"!");
 						break;
 				}
+			}
+
+			if(StringsPaths.Count == 0) {
+				StringsPaths.Add("./StringDumping/out.csv");
 			}
 
 			try {
@@ -197,8 +202,10 @@ namespace OpusMutatum {
 		}
 
 		static void HandleIntermediary(){
+			// TODO: MonoMod relinking?
 			Console.WriteLine("Generating intermediary EXE...");
 			LoadLightning();
+			LoadStrings();
 			// take Lightning.exe, remap to Intermediary
 			CollectIntermediary();
 			foreach(var type in CollectNestedTypes(LightningAssembly.MainModule.Types)){
@@ -216,23 +223,44 @@ namespace OpusMutatum {
 						param.Name = GetIntermediaryForName(param.Name);
 					// references to members in classes with generic parameters don't get remapped automatically
 					// so here we update those references ourself
-					if(method.Body != null && method.Body.Instructions != null)
+					List<(Instruction, int)> stringsToBeInlined = new List<(Instruction, int)>();
+					if(method.Body != null && method.Body.Instructions != null) {
 						foreach(var instr in method.Body.Instructions){
-							if(instr != null && instr.Operand is MethodReference mref && !mref.IsWindowsRuntimeProjection && Intermediary.ContainsKey(mref.Name)) {
-								try {
+							if(instr != null && instr.Operand is MethodReference mref && !mref.IsWindowsRuntimeProjection) {
+								if(Intermediary.ContainsKey(mref.Name)) {
+									if(mref.IsGenericInstance)
+										mref = ((GenericInstanceMethod)mref).GetElementMethod();
 									mref.Name = GetIntermediaryForName(mref.Name);
-								} catch(Exception) {
-									// it's a "method specification", just replace
-									if(!mref.Name.Equals(GetIntermediaryForName(mref.Name))) {
-										instr.Operand = new MethodReference(GetIntermediaryForName(mref.Name), mref.ReturnType, mref.DeclaringType);
-									}
 								}
-								// TODO: also take the oppurtunity to replace references to "class_19.method_67" with the actual string
+								// also take the oppurtunity to replace references to "class_19.method_67" with the actual string
+								if(mref.Name.Equals("method_67") && mref.Parameters.Count == 1) {
+									if(instr.Previous.OpCode == OpCodes.Ldc_I4)
+										stringsToBeInlined.Add((instr, (int)instr.Previous.Operand));
+								}
 							}
 
 							if(instr != null && instr.Operand is FieldReference fref && Intermediary.ContainsKey(fref.Name))
-								fref.Name = (GetIntermediaryForName(fref.Name));//instr.Operand = new FieldReference(GetIntermediaryForName(fref.Name), fref.FieldType, fref.DeclaringType);
+								fref.Name = GetIntermediaryForName(fref.Name);
 						}
+						if(stringsToBeInlined.Count > 0) {
+							foreach(var stringFunc in stringsToBeInlined) {
+								if(Strings.ContainsKey(stringFunc.Item2)) {
+									stringFunc.Item1.Previous.Set(OpCodes.Nop, null);
+									stringFunc.Item1.Set(OpCodes.Ldstr, Strings[stringFunc.Item2]);
+								}
+							}
+						}
+					}
+
+					foreach(var attr in method.CustomAttributes) {
+						if(attr.HasConstructorArguments) {
+							foreach(var arg in attr.ConstructorArguments) {
+								if(arg.Type.Name.Equals("Type")) {
+									(arg.Value as TypeReference).Name = GetIntermediaryForName((arg.Value as TypeReference).Name);
+								}
+							}
+						}
+					}
 					// TODO: map locals
 				}
 				foreach(var field in type.Fields)
@@ -248,6 +276,40 @@ namespace OpusMutatum {
 			Console.WriteLine("Reading Lightning.exe...");
 			LightningAssembly = AssemblyDefinition.ReadAssembly(PathToLightning);
 			Console.WriteLine(LightningAssembly == null ? "Failed to load Lightning.exe" : "Found Lightning executable: " + LightningAssembly.FullName);
+		}
+
+		static void LoadStrings() {
+			if(StringsPaths.Count > 0) {
+				foreach(var path in StringsPaths) {
+					if(!File.Exists(path))
+						continue;
+					string[] lines = File.ReadAllLines(path);
+					bool hadSplit = true; // multi-line strings
+					int lastIndex = 0;
+					foreach(string line in lines) {
+						string[] split = line.Split(new string[]{ "~,~" }, StringSplitOptions.None);
+						if(split.Length > 1) {
+							// if we *can* split on this line, then we're definitely at the first line of a string
+							hadSplit = true;
+							try {
+								lastIndex = int.Parse(split[0]);
+								if(!string.IsNullOrWhiteSpace(split[1]))
+									Strings[lastIndex] = split[1];
+							} catch(FormatException) { }
+						} else if(!hadSplit) {
+							// if this line isn't blank (or even if it is), then we're continuing a previous multi-line string, so append
+							Strings[lastIndex] = Strings[lastIndex] + "\n" + line;
+						}
+					}
+					// these are ridden with special characters
+					// we can't just trim normally, see "fmt " breaking WAV loading
+					// so we manually regex replace: [^a-zA-Z0-9_.:\n;'*()+<>\\{}# ,~/$\[\]\-©!"?&’\t=—@%●●●●…—……]
+					// this kills other languages, a better solution is needed in the future
+					foreach(int key in Strings.Keys.ToList())
+						Strings[key] = Regex.Replace(Strings[key], "[^a-zA-Z0-9_.:\n;'*()+<>\\\\{}# ,~/$\\[\\]\\-©!\" ? &’\t =—@%●●●●…—……]", "");
+				}
+				Console.WriteLine("Loaded " + Strings.Count + " strings.");
+			}
 		}
 
 		static Collection<TypeDefinition> CollectNestedTypes(Collection<TypeDefinition> topLevel){
@@ -313,7 +375,7 @@ namespace OpusMutatum {
 
 		static string GetIntermediaryForName(string name){
 			// if its already valid or its not in intermediary, leave it
-			if(!Intermediary.ContainsKey(name) || Regex.Match(name, "^[a-zA-Z_][a-zA-Z0-9_]*$").Success)
+			if(!Intermediary.ContainsKey(name) || Regex.Match(name, "^[a-zA-Z_\\`][a-zA-Z0-9_\\`]*$").Success)
 				return name;
 			// return intermediary
 			return Intermediary[name];
