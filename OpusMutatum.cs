@@ -9,27 +9,23 @@ using System.Text.RegularExpressions;
 
 namespace OpusMutatum {
 
-	class Program {
+	public class OpusMutatum {
 
 		// For intermediary or devExe
 		static string PathToLightning = "./Lightning.exe";
+		static string PathToModdedLightning = "./ModdedLightning.exe";
 
 		// for merge
 		static string PathToMonoMod = "./MonoMod.exe";
-
-		// for devToRun
-		static string PathToMod = "";
-
-		// for strings (applied to intermediary exe)
-		static string PathToIntermediaryLightning = "./IntermediaryLightning.exe";
 
 		static List<string> MappingPaths = new List<string>();
 		static List<string> IntermediaryPaths = new List<string>();
 		static List<string> StringsPaths = new List<string>();
 
-		static AssemblyDefinition LightningAssembly;
+		static AssemblyDefinition LightningAssembly, ModdedLightningAssembly;
 
 		static Dictionary<string, string> Intermediary = new Dictionary<string, string>();
+		static Dictionary<string, string> Mappings = new Dictionary<string, string>();
 		static Dictionary<int, string> Strings = new Dictionary<int, string>();
 
 		static void Main(string[] args){
@@ -38,7 +34,7 @@ namespace OpusMutatum {
 			foreach(var arg in args){
 				switch(current) {
 					case ArgumentParsingMode.Argument:
-						// check if its "run", "strings", "intermediary", merge", "setup", "devExe", "devToRun"
+						// check if its "run", "strings", "intermediary", merge", "setup", "devExe"
 						// or "--mappings", "--intermediary", "--strings", "--lightning", "--monomod", "--intermediaryPath"
 						if(arg.Equals("run"))
 							action = RunAction.Run;
@@ -52,10 +48,7 @@ namespace OpusMutatum {
 							action = RunAction.Setup;
 						else if(arg.Equals("devExe"))
 							action = RunAction.DevExe;
-						else if(arg.Equals("devToRun")) {
-							action = RunAction.DevToRun;
-							current = ArgumentParsingMode.ModPath;
-						}else if(arg.Equals("--mappings"))
+						else if(arg.Equals("--mappings"))
 							current = ArgumentParsingMode.MappingPath;
 						else if(arg.Equals("--intermediary"))
 							current = ArgumentParsingMode.IntermediaryPath;
@@ -86,10 +79,6 @@ namespace OpusMutatum {
 						PathToMonoMod = arg;
 						current = ArgumentParsingMode.Argument;
 						break;
-					case ArgumentParsingMode.ModPath:
-						PathToMod = arg;
-						current = ArgumentParsingMode.Argument;
-						break;
 					default:
 						Console.WriteLine("Invalid argument \"" + arg + "\"!");
 						break;
@@ -118,9 +107,6 @@ namespace OpusMutatum {
 						break;
 					case RunAction.DevExe:
 						HandleDevExe();
-						break;
-					case RunAction.DevToRun:
-						HandleDevToRun();
 						break;
 					case RunAction.Run:
 					default:
@@ -208,66 +194,26 @@ namespace OpusMutatum {
 			LoadStrings();
 			// take Lightning.exe, remap to Intermediary
 			CollectIntermediary();
-			foreach(var type in CollectNestedTypes(LightningAssembly.MainModule.Types)){
-				type.Name = GetIntermediaryForName(type.Name);
-				if(type.IsNested) {
-					type.IsNestedPublic = true;
-				} else {
-					type.IsPublic = true;
-				}
-				foreach(var method in type.Methods){
-					// rtspecialname is applied to constructors and operators
-					if(!method.IsRuntimeSpecialName)
-						method.Name = GetIntermediaryForName(method.Name);
-					foreach(var param in method.Parameters)
-						param.Name = GetIntermediaryForName(param.Name);
-					// references to members in classes with generic parameters don't get remapped automatically
-					// so here we update those references ourself
-					List<(Instruction, int)> stringsToBeInlined = new List<(Instruction, int)>();
-					if(method.Body != null && method.Body.Instructions != null) {
-						foreach(var instr in method.Body.Instructions){
-							if(instr != null && instr.Operand is MethodReference mref && !mref.IsWindowsRuntimeProjection) {
-								if(Intermediary.ContainsKey(mref.Name)) {
-									if(mref.IsGenericInstance)
-										mref = ((GenericInstanceMethod)mref).GetElementMethod();
-									mref.Name = GetIntermediaryForName(mref.Name);
-								}
-								// also take the oppurtunity to replace references to "class_19.method_67" with the actual string
-								if(mref.Name.Equals("method_67") && mref.Parameters.Count == 1) {
-									if(instr.Previous.OpCode == OpCodes.Ldc_I4)
-										stringsToBeInlined.Add((instr, (int)instr.Previous.Operand));
-								}
-							}
-
-							if(instr != null && instr.Operand is FieldReference fref && Intermediary.ContainsKey(fref.Name))
-								fref.Name = GetIntermediaryForName(fref.Name);
-						}
-						if(stringsToBeInlined.Count > 0) {
-							foreach(var stringFunc in stringsToBeInlined) {
-								if(Strings.ContainsKey(stringFunc.Item2)) {
-									stringFunc.Item1.Previous.Set(OpCodes.Nop, null);
-									stringFunc.Item1.Set(OpCodes.Ldstr, Strings[stringFunc.Item2]);
-								}
-							}
-						}
+			List<(Instruction, int)> stringsToBeInlined = new List<(Instruction, int)>();
+			DoRemap(GetIntermediaryForName, Intermediary.ContainsKey, CollectNestedTypes(LightningAssembly.MainModule.Types),
+				(mref, instr) => {
+					if(mref.Name.Equals("method_67") && mref.Parameters.Count == 1)
+						if(instr.Previous.OpCode == OpCodes.Ldc_I4)
+							stringsToBeInlined.Add((instr, (int)instr.Previous.Operand));
+				},
+				type => {
+					if(type.IsNested)
+						type.IsNestedPublic = true;
+					else
+						type.IsPublic = true;
+					
+				});
+			if(stringsToBeInlined.Count > 0)
+				foreach(var stringFunc in stringsToBeInlined)
+					if(Strings.ContainsKey(stringFunc.Item2)) {
+						stringFunc.Item1.Previous.Set(OpCodes.Nop, null);
+						stringFunc.Item1.Set(OpCodes.Ldstr, Strings[stringFunc.Item2]);
 					}
-
-					foreach(var attr in method.CustomAttributes) {
-						if(attr.HasConstructorArguments) {
-							foreach(var arg in attr.ConstructorArguments) {
-								if(arg.Type.Name.Equals("Type")) {
-									(arg.Value as TypeReference).Name = GetIntermediaryForName((arg.Value as TypeReference).Name);
-								}
-							}
-						}
-					}
-					// TODO: map locals
-				}
-				foreach(var field in type.Fields)
-					field.Name = GetIntermediaryForName(field.Name);
-				foreach(var generic in type.GenericParameters)
-					generic.Name = GetIntermediaryForName(generic.Name);
-			}
 
 			LightningAssembly.Write("IntermediaryLightning.exe");
 		}
@@ -276,6 +222,12 @@ namespace OpusMutatum {
 			Console.WriteLine("Reading Lightning.exe...");
 			LightningAssembly = AssemblyDefinition.ReadAssembly(PathToLightning);
 			Console.WriteLine(LightningAssembly == null ? "Failed to load Lightning.exe" : "Found Lightning executable: " + LightningAssembly.FullName);
+		}
+
+		static void LoadModdedLightning() {
+			Console.WriteLine("Reading modded Lightning.exe...");
+			ModdedLightningAssembly = AssemblyDefinition.ReadAssembly(PathToModdedLightning);
+			Console.WriteLine(ModdedLightningAssembly == null ? $"Failed to load modded Lightning.exe at \"{PathToModdedLightning}\"" : "Found modded Lightning executable: " + ModdedLightningAssembly.FullName);
 		}
 
 		static void LoadStrings() {
@@ -309,6 +261,48 @@ namespace OpusMutatum {
 						Strings[key] = Regex.Replace(Strings[key], "[^a-zA-Z0-9_.:\n;'*()+<>\\\\{}# ,~/$\\[\\]\\-©!\" ? &’\t =—@%●●●●…—……]", "");
 				}
 				Console.WriteLine("Loaded " + Strings.Count + " strings.");
+			}
+		}
+
+		public static void DoRemap(Func<string, TypeDefinition, string> remapper, Func<string, bool> remapChecker, Collection<TypeDefinition> types, Action<MethodReference, Instruction> onMethodReference, Action<TypeDefinition> onTypeDefinition) {
+			foreach(var type in types) {
+				type.Name = remapper(type.Name, type);
+				onTypeDefinition(type);
+				foreach(var method in type.Methods) {
+					// rtspecialname is applied to constructors and operators
+					if(!method.IsRuntimeSpecialName)
+						method.Name = remapper(method.Name, type);
+					foreach(var param in method.Parameters)
+						param.Name = remapper(param.Name, type);
+					// references to members in classes with generic parameters don't get remapped automatically
+					// so here we update those references ourself
+					if(method.Body != null && method.Body.Instructions != null) {
+						foreach(var instr in method.Body.Instructions) {
+							if(instr != null && instr.Operand is MethodReference mref && !mref.IsWindowsRuntimeProjection) {
+								if(remapChecker(mref.Name)) {
+									if(mref.IsGenericInstance)
+										mref = ((GenericInstanceMethod)mref).GetElementMethod();
+									mref.Name = remapper(mref.Name, type);
+								}
+								// also take the oppurtunity to replace references to "class_19.method_67" with the actual string
+								onMethodReference(mref, instr);
+							}
+
+							if(instr != null && instr.Operand is FieldReference fref && remapChecker(fref.Name))
+								fref.Name = remapper(fref.Name, type);
+						}
+					}
+					foreach(var attr in method.CustomAttributes)
+						if(attr.HasConstructorArguments)
+							foreach(var arg in attr.ConstructorArguments)
+								if(arg.Type.Name.Equals("Type"))
+									(arg.Value as TypeReference).Name = remapper((arg.Value as TypeReference).Name, type);
+					// TODO: map locals
+				}
+				foreach(var field in type.Fields)
+					field.Name = remapper(field.Name, type);
+				foreach(var generic in type.GenericParameters)
+					generic.Name = remapper(generic.Name, type);
 			}
 		}
 
@@ -373,7 +367,7 @@ namespace OpusMutatum {
 			}
 		}
 
-		static string GetIntermediaryForName(string name){
+		static string GetIntermediaryForName(string name, TypeDefinition owner){
 			// if its already valid or its not in intermediary, leave it
 			if(!Intermediary.ContainsKey(name) || Regex.Match(name, "^[a-zA-Z_\\`][a-zA-Z0-9_\\`]*$").Success)
 				return name;
@@ -393,18 +387,44 @@ namespace OpusMutatum {
 
 		static void HandleDevExe(){
 			// take IntermediaryLightning.exe, remap to named
+			Console.WriteLine("Generating dev EXE...");
+			LoadModdedLightning();
+			LoadMappings();
+			DoRemap(GetNamedForIntermediary, Mappings.ContainsKey, CollectNestedTypes(ModdedLightningAssembly.MainModule.Types), (mref, instr) => {}, typeDef => {});
+			ModdedLightningAssembly.Write("DevLightning.exe");
 		}
 
-		static void HandleDevToRun(){
-			// take modded DLL, remap to intermediary
+		static string GetNamedForIntermediary(string intermediary, TypeDefinition owner) {
+			if(!Mappings.ContainsKey(intermediary))
+				return intermediary;
+			string name = Mappings[intermediary];
+			if(name.Contains("."))
+				name = name.Split('.')[1];
+			return name;
+		}
+
+		static void LoadMappings() {
+			foreach(var path in MappingPaths) {
+				if(!File.Exists(path))
+					continue;
+				string[] lines = File.ReadAllLines(path);
+				foreach(var line in lines) {
+					if(string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
+						continue;
+					if(!line.Contains(","))
+						Console.WriteLine($"Invalid line in {path}: \"{line}\", missing comma.");
+					string[] parts = line.Split(',');
+					Mappings[parts[0]] = parts[1];
+				}
+			}
 		}
 
 		enum ArgumentParsingMode{
-			Argument, MappingPath, IntermediaryPath, StringsPath, LightningPath, MonoModPath, ModPath
+			Argument, MappingPath, IntermediaryPath, StringsPath, LightningPath, MonoModPath
 		}
 
 		enum RunAction{
-			Run, Strings, Intermediary, Merge, Setup, DevExe, DevToRun
+			Run, Strings, Intermediary, Merge, Setup, DevExe
 		}
 	}
 }
