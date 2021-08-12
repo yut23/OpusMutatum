@@ -386,7 +386,7 @@ namespace OpusMutatum {
 		}
 
 		static void HandleDevExe(){
-			// take IntermediaryLightning.exe, remap to named
+			// take ModdedLightning.exe, remap to named
 			Console.WriteLine("Generating dev EXE...");
 			LoadModdedLightning();
 			LoadMappings();
@@ -398,8 +398,11 @@ namespace OpusMutatum {
 			if(!Mappings.ContainsKey(intermediary))
 				return intermediary;
 			string name = Mappings[intermediary];
-			if(name.Contains("."))
-				name = name.Split('.')[1];
+			if(name.Contains(".")) {
+				string[] split = name.Split('.');
+				name = split[split.Length - 1];
+			}
+
 			return name;
 		}
 
