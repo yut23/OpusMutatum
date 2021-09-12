@@ -3,6 +3,7 @@ using Mono.Cecil.Cil;
 using Mono.Collections.Generic;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -28,10 +29,10 @@ namespace OpusMutatum {
 		static Dictionary<string, string> Mappings = new Dictionary<string, string>();
 		static Dictionary<int, string> Strings = new Dictionary<int, string>();
 
-		static void Main(string[] args){
+		static void Main(string[] args) {
 			ArgumentParsingMode current = ArgumentParsingMode.Argument;
-			RunAction action = RunAction.Run;
-			foreach(var arg in args){
+			RunAction action = RunAction.Setup;
+			foreach(var arg in args) {
 				switch(current) {
 					case ArgumentParsingMode.Argument:
 						// check if its "run", "strings", "intermediary", merge", "setup", "devExe"
@@ -115,30 +116,33 @@ namespace OpusMutatum {
 				}
 			} catch(Exception e) {
 				Console.WriteLine("Error executing task:");
-				Console.WriteLine(e.Message);
-				Console.WriteLine(e.StackTrace);
+				Console.WriteLine(e.ToString());
 			}
 			Console.WriteLine("Done.");
+			// keep command line open
+			Console.ReadKey();
 		}
 
-		static void HandleRun(){
+		static void HandleRun() {
 			// just run MONOMODDED_IntermediaryLightning.exe
 		}
 
-		static void HandleStrings(){
+		static void HandleStrings() {
+			// TODO: some config file for main method & parse method?
+			
 			Console.WriteLine("Dumping strings...");
 			LoadLightning();
 			// take Lightning.exe, find all refs to string parser: "#=qQ3boY4a6o2O2sPtKvJtj_Q6y77XoLuLRv$4EsOcRQr4="."#=qhwVTryR65imID$n_uKTBPA=="
 			var module = LightningAssembly.MainModule;
-			var parse = module.FindMethod("\u0023\u003Dq2EPbWi4HZqbkGDFcUMi56ZzB8VAbZoGcTMgcY2RDY4U\u003D", "\u0023\u003DqhM7pxz5HnSshiTag67xAZg\u003D\u003D");
-			
+			var parse = module.FindMethod("#=q7nvcBd_hWOx6ogq743lZkyDITddtOR9ugDU9NV1hD8Y=", "#=qb3HWBkVlFVubfVOAwuy8rw==");
+
 			Console.WriteLine("Finding keys...");
 			// get all the keys this way
 			var refs = new List<Instruction>();
-			foreach(var type in CollectNestedTypes(LightningAssembly.MainModule.Types)) 
-				foreach(var method in type.Methods) 
-					if(method.HasBody) 
-						foreach(var instr in method.Body.Instructions) 
+			foreach(var type in CollectNestedTypes(LightningAssembly.MainModule.Types))
+				foreach(var method in type.Methods)
+					if(method.HasBody)
+						foreach(var instr in method.Body.Instructions)
 							if(instr.OpCode.Code == Code.Call && instr.Operand is MethodReference operand && operand.Resolve().Equals(parse))
 								refs.Add(instr);
 
@@ -148,8 +152,8 @@ namespace OpusMutatum {
 				keys.Add((int)instr.Previous.Operand);
 
 			Console.WriteLine($"Found {keys.Count()}");
-			
-			var mainMethod = module.FindMethod("\u0023\u003DqY_2YbNnFUotr2XEajflqbg\u003D\u003D", "\u0023\u003Dqv9BkCthwDUsuiNqUYPHVfA\u003D\u003D");
+
+			var mainMethod = module.FindMethod("#=qbZYLMl8F9alVNlRAO03dOw==", "#=qAqM7sFzcD4RfaoNvmBH0bw==");
 			var proc = mainMethod.Body.GetILProcessor();
 			var first = proc.Body.Instructions.First();
 
@@ -185,9 +189,13 @@ namespace OpusMutatum {
 
 			Directory.CreateDirectory("./StringDumping");
 			module.Write("./StringDumping/Lightning.exe");
+
+			Console.WriteLine("Running string dumper...");
+			// run the string dumper automatically
+			RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "StringDumping", "Lightning.exe"), "");
 		}
 
-		static void HandleIntermediary(){
+		static void HandleIntermediary() {
 			// TODO: MonoMod relinking?
 			Console.WriteLine("Generating intermediary EXE...");
 			LoadLightning();
@@ -206,7 +214,7 @@ namespace OpusMutatum {
 						type.IsNestedPublic = true;
 					else
 						type.IsPublic = true;
-					
+
 				});
 			if(stringsToBeInlined.Count > 0)
 				foreach(var stringFunc in stringsToBeInlined)
@@ -218,7 +226,7 @@ namespace OpusMutatum {
 			LightningAssembly.Write("IntermediaryLightning.exe");
 		}
 
-		static void LoadLightning(){
+		static void LoadLightning() {
 			Console.WriteLine("Reading Lightning.exe...");
 			LightningAssembly = AssemblyDefinition.ReadAssembly(PathToLightning);
 			Console.WriteLine(LightningAssembly == null ? "Failed to load Lightning.exe" : "Found Lightning executable: " + LightningAssembly.FullName);
@@ -239,7 +247,7 @@ namespace OpusMutatum {
 					bool hadSplit = true; // multi-line strings
 					int lastIndex = 0;
 					foreach(string line in lines) {
-						string[] split = line.Split(new string[]{ "~,~" }, StringSplitOptions.None);
+						string[] split = line.Split(new string[] { "~,~" }, StringSplitOptions.None);
 						if(split.Length > 1) {
 							// if we *can* split on this line, then we're definitely at the first line of a string
 							hadSplit = true;
@@ -306,32 +314,32 @@ namespace OpusMutatum {
 			}
 		}
 
-		static Collection<TypeDefinition> CollectNestedTypes(Collection<TypeDefinition> topLevel){
+		static Collection<TypeDefinition> CollectNestedTypes(Collection<TypeDefinition> topLevel) {
 			var types = new Collection<TypeDefinition>();
 			foreach(var type in topLevel)
 				VisitTypes(type, t => types.Add(t));
 			return types;
 		}
 
-		static void CollectIntermediary(){
+		static void CollectIntermediary() {
 			// if a name is a valid CSharp name, it is its own intermediary
 			// parse preset intermediary?
 
 			// or gen intermediary
 			int classIndex = 0, enumIndex = 0, interfaceIndex = 0, methodIndex = 0, structIndex = 0, delegateIndex = 0, fieldIndex = 0, genericIndex = 0, paramIndex = 0;
-			foreach(var type in CollectNestedTypes(LightningAssembly.MainModule.Types)){
-				if(!Intermediary.ContainsKey(type.Name) && !type.IsRuntimeSpecialName){
+			foreach(var type in CollectNestedTypes(LightningAssembly.MainModule.Types)) {
+				if(!Intermediary.ContainsKey(type.Name) && !type.IsRuntimeSpecialName) {
 					// its a delegate if it descends from System.MulticastDelegate
-					if(type.BaseType?.FullName?.Equals("System.MulticastDelegate") ?? false){
+					if(type.BaseType?.FullName?.Equals("System.MulticastDelegate") ?? false) {
 						Intermediary.Add(type.Name, "delegate_" + delegateIndex);
 						delegateIndex++;
-					}else if(type.IsInterface){
+					} else if(type.IsInterface) {
 						Intermediary.Add(type.Name, "interface_" + interfaceIndex);
 						interfaceIndex++;
-					}else if(type.IsEnum){
+					} else if(type.IsEnum) {
 						Intermediary.Add(type.Name, "enum_" + enumIndex);
 						enumIndex++;
-					}else if(type.IsValueType){
+					} else if(type.IsValueType) {
 						Intermediary.Add(type.Name, "struct_" + structIndex);
 						structIndex++;
 					} else {
@@ -339,27 +347,27 @@ namespace OpusMutatum {
 						classIndex++;
 					}
 				}
-				foreach(var method in type.Methods){
-					if(!Intermediary.ContainsKey(method.Name) && !method.IsRuntimeSpecialName){
+				foreach(var method in type.Methods) {
+					if(!Intermediary.ContainsKey(method.Name) && !method.IsRuntimeSpecialName) {
 						Intermediary.Add(method.Name, "method_" + methodIndex);
 						methodIndex++;
 					}
-					foreach(var param in method.Parameters){
-						if(!Intermediary.ContainsKey(param.Name)){
+					foreach(var param in method.Parameters) {
+						if(!Intermediary.ContainsKey(param.Name)) {
 							Intermediary.Add(param.Name, "param_" + paramIndex);
 							paramIndex++;
 						}
 					}
 					// TODO: map locals
 				}
-				foreach(var field in type.Fields){
-					if(!Intermediary.ContainsKey(field.Name) && !field.IsRuntimeSpecialName){
+				foreach(var field in type.Fields) {
+					if(!Intermediary.ContainsKey(field.Name) && !field.IsRuntimeSpecialName) {
 						Intermediary.Add(field.Name, "field_" + fieldIndex);
 						fieldIndex++;
 					}
 				}
-				foreach(var generic in type.GenericParameters){
-					if(!Intermediary.ContainsKey(generic.Name)){
+				foreach(var generic in type.GenericParameters) {
+					if(!Intermediary.ContainsKey(generic.Name)) {
 						Intermediary.Add(generic.Name, "generic_" + genericIndex);
 						genericIndex++;
 					}
@@ -367,7 +375,7 @@ namespace OpusMutatum {
 			}
 		}
 
-		static string GetIntermediaryForName(string name, TypeDefinition owner){
+		static string GetIntermediaryForName(string name, TypeDefinition owner) {
 			// if its already valid or its not in intermediary, leave it
 			if(!Intermediary.ContainsKey(name) || Regex.Match(name, "^[a-zA-Z_\\`][a-zA-Z0-9_\\`]*$").Success)
 				return name;
@@ -375,23 +383,57 @@ namespace OpusMutatum {
 			return Intermediary[name];
 		}
 
-		static void VisitTypes(TypeDefinition top, Action<TypeDefinition> act){
+		static void VisitTypes(TypeDefinition top, Action<TypeDefinition> act) {
 			act(top);
 			foreach(var type in top.NestedTypes)
 				VisitTypes(type, act);
 		}
 
-		static void HandleMerge(){
-			// run MonoMod.exe IntermediaryLightning.exe
+		static void HandleMerge() {
+			// run "./MonoMod.exe IntermediaryLightning.exe Quintessential.dll ModdedLightning.exe"
+			// then "./MonoMod.RuntimeDetour.HookGen.exe ModdedLightning.exe"
+			if(File.Exists("./MonoMod.exe")) {
+				if(File.Exists("./Quintessential.dll")) {
+					// TODO: check if there's already quintessential with this version
+					Console.WriteLine("Modding Lightning...");
+					RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "MonoMod.exe"), "IntermediaryLightning.exe Quintessential.dll ModdedLightning.exe");
+					if(!File.Exists("./ModdedLightning.exe")) {
+						Console.WriteLine("Failed to mod!");
+						return;
+					}
+					if(File.Exists("./MonoMod.RuntimeDetour.HookGen.exe")) {
+						Console.WriteLine("Generating hooks...");
+						RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "MonoMod.RuntimeDetour.HookGen.exe"), "ModdedLightning.exe");
+					}
+				} else {
+					Console.WriteLine("Quintessential not found, skipping merging.");
+				}
+			} else {
+				Console.WriteLine("MonoMod not found, skipping merging.");
+			}
 		}
 
-		static void HandleDevExe(){
+		static void HandleDevExe() {
 			// take ModdedLightning.exe, remap to named
 			Console.WriteLine("Generating dev EXE...");
 			LoadModdedLightning();
 			LoadMappings();
-			DoRemap(GetNamedForIntermediary, Mappings.ContainsKey, CollectNestedTypes(ModdedLightningAssembly.MainModule.Types), (mref, instr) => {}, typeDef => {});
+			DoRemap(GetNamedForIntermediary, Mappings.ContainsKey, CollectNestedTypes(ModdedLightningAssembly.MainModule.Types), (mref, instr) => { }, typeDef => { });
 			ModdedLightningAssembly.Write("DevLightning.exe");
+		}
+
+		static void RunAndWait(string file, string param){
+			Console.WriteLine("Running " + file);
+			if(!File.Exists(file)) {
+				Console.WriteLine("Failed to run " + file + ", file not found.");
+				return;
+			}
+			Process process = new Process();
+			process.StartInfo.FileName = "\"" + (file) + "\"";
+			process.StartInfo.Arguments = "\"" + (param) + "\"";
+			process.Start();
+			process.WaitForExit();
+
 		}
 
 		static string GetNamedForIntermediary(string intermediary, TypeDefinition owner) {
