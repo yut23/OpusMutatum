@@ -88,6 +88,7 @@ namespace OpusMutatum {
 
 			if(StringsPaths.Count == 0) {
 				StringsPaths.Add("./StringDumping/out.csv");
+				StringsPaths.Add("./out.csv");
 			}
 
 			try {
@@ -205,7 +206,7 @@ namespace OpusMutatum {
 			List<(Instruction, int)> stringsToBeInlined = new List<(Instruction, int)>();
 			DoRemap(GetIntermediaryForName, Intermediary.ContainsKey, CollectNestedTypes(LightningAssembly.MainModule.Types),
 				(mref, instr) => {
-					if(mref.Name.Equals("method_67") && mref.Parameters.Count == 1)
+					if(mref.Name.Equals("method_131") && mref.Parameters.Count == 1)
 						if(instr.Previous.OpCode == OpCodes.Ldc_I4)
 							stringsToBeInlined.Add((instr, (int)instr.Previous.Operand));
 				},
