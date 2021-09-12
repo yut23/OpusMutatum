@@ -245,29 +245,23 @@ namespace OpusMutatum {
 					if(!File.Exists(path))
 						continue;
 					string[] lines = File.ReadAllLines(path);
-					bool hadSplit = true; // multi-line strings
 					int lastIndex = 0;
 					foreach(string line in lines) {
 						string[] split = line.Split(new string[] { "~,~" }, StringSplitOptions.None);
 						if(split.Length > 1) {
 							// if we *can* split on this line, then we're definitely at the first line of a string
-							hadSplit = true;
 							try {
 								lastIndex = int.Parse(split[0]);
-								if(!string.IsNullOrWhiteSpace(split[1]))
-									Strings[lastIndex] = split[1];
+								if(string.IsNullOrEmpty(split[1])) {
+									split[1] = /*something that doesn't exist in dialog*/"!!! opus mutatum: missing string !!!";
+								}
+								Strings[lastIndex] = split[1];
 							} catch(FormatException) { }
-						} else if(!hadSplit) {
+						} else {
 							// if this line isn't blank (or even if it is), then we're continuing a previous multi-line string, so append
 							Strings[lastIndex] = Strings[lastIndex] + "\n" + line;
 						}
 					}
-					// these are ridden with special characters
-					// we can't just trim normally, see "fmt " breaking WAV loading
-					// so we manually regex replace: [^a-zA-Z0-9_.:\n;'*()+<>\\{}# ,~/$\[\]\-©!"?&’\t=—@%●●●●…—……]
-					// this kills other languages, a better solution is needed in the future
-					foreach(int key in Strings.Keys.ToList())
-						Strings[key] = Regex.Replace(Strings[key], "[^a-zA-Z0-9_.:\n;'*()+<>\\\\{}# ,~/$\\[\\]\\-©!\" ? &’\t =—@%●●●●…—……]", "");
 				}
 				Console.WriteLine("Loaded " + Strings.Count + " strings.");
 			}
