@@ -133,7 +133,6 @@ namespace OpusMutatum {
 			
 			Console.WriteLine("Dumping strings...");
 			LoadLightning();
-			// take Lightning.exe, find all refs to string parser: "#=qQ3boY4a6o2O2sPtKvJtj_Q6y77XoLuLRv$4EsOcRQr4="."#=qhwVTryR65imID$n_uKTBPA=="
 			var module = LightningAssembly.MainModule;
 			var parse = module.FindMethod("#=q7nvcBd_hWOx6ogq743lZkyDITddtOR9ugDU9NV1hD8Y=", "#=qb3HWBkVlFVubfVOAwuy8rw==");
 
@@ -147,12 +146,12 @@ namespace OpusMutatum {
 							if(instr.OpCode.Code == Code.Call && instr.Operand is MethodReference operand && operand.Resolve().Equals(parse))
 								refs.Add(instr);
 
-			var keys = new List<int>();
+			var keys = new HashSet<int>();
 
 			foreach(var instr in refs)
 				keys.Add((int)instr.Previous.Operand);
 
-			Console.WriteLine($"Found {keys.Count()}");
+			Console.WriteLine($"Found {keys.Count()} string keys");
 
 			var mainMethod = module.FindMethod("#=qbZYLMl8F9alVNlRAO03dOw==", "#=qAqM7sFzcD4RfaoNvmBH0bw==");
 			var proc = mainMethod.Body.GetILProcessor();
@@ -170,7 +169,7 @@ namespace OpusMutatum {
 			Console.WriteLine("Getting WriteLine method...");
 			var writeLine = module.ImportReference(streamWriter.BaseType.Resolve().Methods.First(m => m.Name.Equals("WriteLine") && m.Parameters.Count == 1 && m.Parameters.All(p => p.ParameterType.FullName.Equals(stringt.FullName))));
 			Console.WriteLine("Getting Dispose method...");
-			var dispose = module.ImportReference(streamWriter.FindMethod("Dispose"));
+			var dispose = module.ImportReference(streamWriter.BaseType.Resolve().FindMethod("Close"));
 
 			Console.WriteLine("Creating string dumper...");
 			proc.InsertBefore(first, proc.Create(OpCodes.Ldstr, "./out.csv"));
@@ -184,7 +183,7 @@ namespace OpusMutatum {
 				proc.InsertBefore(first, proc.Create(OpCodes.Call, concat));
 				proc.InsertBefore(first, proc.Create(OpCodes.Callvirt, writeLine));
 			}
-			proc.InsertBefore(first, proc.Create(OpCodes.Ldc_I4_1));
+			//proc.InsertBefore(first, proc.Create(OpCodes.Ldc_I4_1));
 			proc.InsertBefore(first, proc.Create(OpCodes.Callvirt, dispose));
 			proc.InsertBefore(first, proc.Create(OpCodes.Ret));
 
@@ -222,7 +221,8 @@ namespace OpusMutatum {
 					if(Strings.ContainsKey(stringFunc.Item2)) {
 						stringFunc.Item1.Previous.Set(OpCodes.Nop, null);
 						stringFunc.Item1.Set(OpCodes.Ldstr, Strings[stringFunc.Item2]);
-					}
+					} else
+						Console.WriteLine($"Missing string for {stringFunc.Item2}");
 
 			LightningAssembly.Write("IntermediaryLightning.exe");
 		}
@@ -287,7 +287,7 @@ namespace OpusMutatum {
 										mref = ((GenericInstanceMethod)mref).GetElementMethod();
 									mref.Name = remapper(mref.Name, type);
 								}
-								// also take the oppurtunity to replace references to "class_19.method_67" with the actual string
+								// also take the oppurtunity to replace references to string decoder with the actual string
 								onMethodReference(mref, instr);
 							}
 
