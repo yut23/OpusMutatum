@@ -252,9 +252,6 @@ namespace OpusMutatum {
 							// if we *can* split on this line, then we're definitely at the first line of a string
 							try {
 								lastIndex = int.Parse(split[0]);
-								if(string.IsNullOrEmpty(split[1])) {
-									split[1] = /*something that doesn't exist in dialog*/"!!! opus mutatum: missing string !!!";
-								}
 								Strings[lastIndex] = split[1];
 							} catch(FormatException) { }
 						} else {
