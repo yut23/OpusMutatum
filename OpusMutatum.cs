@@ -29,6 +29,8 @@ namespace OpusMutatum {
 		static Dictionary<string, string> Mappings = new Dictionary<string, string>();
 		static Dictionary<int, string> Strings = new Dictionary<int, string>();
 
+		static bool RunWithMono = false;
+
 		static void Main(string[] args) {
 			ArgumentParsingMode current = ArgumentParsingMode.Argument;
 			RunAction action = RunAction.Setup;
@@ -36,7 +38,7 @@ namespace OpusMutatum {
 				switch(current) {
 					case ArgumentParsingMode.Argument:
 						// check if its "run", "strings", "intermediary", merge", "setup", "devExe"
-						// or "--mappings", "--intermediary", "--strings", "--lightning", "--monomod", "--intermediaryPath"
+						// or "--mappings", "--intermediary", "--strings", "--lightning", "--monomod", "--intermediaryPath", "--mono"
 						if(arg.Equals("run"))
 							action = RunAction.Run;
 						else if(arg.Equals("strings"))
@@ -59,6 +61,8 @@ namespace OpusMutatum {
 							current = ArgumentParsingMode.LightningPath;
 						else if(arg.Equals("--monomod"))
 							current = ArgumentParsingMode.MonoModPath;
+						else if(arg.Equals("--mono"))
+							RunWithMono = true;
 						break;
 					case ArgumentParsingMode.MappingPath:
 						MappingPaths.Add(arg);
@@ -193,6 +197,7 @@ namespace OpusMutatum {
 			Console.WriteLine("Running string dumper...");
 			// run the string dumper automatically
 			RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "StringDumping", "Lightning.exe"), "");
+			Console.WriteLine();
 		}
 
 		static void HandleIntermediary() {
@@ -225,6 +230,7 @@ namespace OpusMutatum {
 						Console.WriteLine($"Missing string for {stringFunc.Item2}");
 
 			LightningAssembly.Write("IntermediaryLightning.exe");
+			Console.WriteLine();
 		}
 
 		static void LoadLightning() {
@@ -403,6 +409,7 @@ namespace OpusMutatum {
 			} else {
 				Console.WriteLine("MonoMod not found, skipping merging.");
 			}
+			Console.WriteLine();
 		}
 
 		static void HandleDevExe() {
@@ -412,6 +419,7 @@ namespace OpusMutatum {
 			LoadMappings();
 			DoRemap(GetNamedForIntermediary, Mappings.ContainsKey, CollectNestedTypes(ModdedLightningAssembly.MainModule.Types), (mref, instr) => { }, typeDef => { });
 			ModdedLightningAssembly.Write("DevLightning.exe");
+			Console.WriteLine();
 		}
 
 		static void RunAndWait(string file, string param){
@@ -420,12 +428,22 @@ namespace OpusMutatum {
 				Console.WriteLine("Failed to run " + file + ", file not found.");
 				return;
 			}
+			if(RunWithMono) {
+				// will this work? who knows.
+				param = file + " " + param;
+				file = "mono";
+			}
 			Process process = new Process();
-			process.StartInfo.FileName = "\"" + (file) + "\"";
-			process.StartInfo.Arguments = "\"" + (param) + "\"";
+			process.StartInfo.FileName = "\"" + file + "\"";
+			process.StartInfo.Arguments = param;
+			process.StartInfo.RedirectStandardOutput = true;
+			process.StartInfo.UseShellExecute = false;
 			process.Start();
 			process.WaitForExit();
-
+			Console.WriteLine();
+			Console.WriteLine("Process output:");
+			Console.WriteLine(process.StandardOutput.ReadToEnd());
+			Console.WriteLine();
 		}
 
 		static string GetNamedForIntermediary(string intermediary, TypeDefinition owner) {
