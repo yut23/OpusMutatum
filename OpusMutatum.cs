@@ -414,10 +414,13 @@ namespace OpusMutatum {
 						Console.WriteLine("Generating hooks...");
 						RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "MonoMod.RuntimeDetour.HookGen.exe"), "ModdedLightning.exe");
 						if(IsLinux) {
-							// On linux, the game has to run through a wrapper x86(_64) file
-							// Meaning the executable has to be named "Lightning.exe"
-							// This makes the hook for Lightning, while keeping the hook for Modded for development.
+							// This makes the hook for Lightning, while keeping the original hook for Modded for development.
 							File.Copy("MMHOOK_ModdedLightning.dll", "MMHOOK_Lightning.dll", true);
+							// Fixes the SDL2.dll not found error
+							File.Copy("Lightning.exe.config", "ModdedLightning.exe.config.dll", true);
+							// These are the files you run to make the thing do the thing. yes
+							File.Copy("Lightning.bin.x86", "ModdedLightning.bin.x86", true);
+							File.Copy("Lightning.bin.x86_64", "ModdedLightning.bin.x86_64", true);
 						}
 					}
 				} else {
