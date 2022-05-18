@@ -29,7 +29,15 @@ namespace OpusMutatum {
 		static Dictionary<string, string> Mappings = new Dictionary<string, string>();
 		static Dictionary<int, string> Strings = new Dictionary<int, string>();
 
-		static bool RunWithMono = false;
+		// Linux Stuff, since Linux has a few differences
+		static bool IsLinux
+		{
+			get
+			{
+				int p = (int) Environment.OSVersion.Platform;
+				return (p == 4) || (p == 6) || (p == 128);
+			}
+		}
 
 		static void Main(string[] args) {
 			ArgumentParsingMode current = ArgumentParsingMode.Argument;
@@ -38,7 +46,7 @@ namespace OpusMutatum {
 				switch(current) {
 					case ArgumentParsingMode.Argument:
 						// check if its "run", "strings", "intermediary", merge", "setup", "devExe"
-						// or "--mappings", "--intermediary", "--strings", "--lightning", "--monomod", "--intermediaryPath", "--mono"
+						// or "--mappings", "--intermediary", "--strings", "--lightning", "--monomod", "--intermediaryPath"
 						if(arg.Equals("run"))
 							action = RunAction.Run;
 						else if(arg.Equals("strings"))
@@ -61,8 +69,6 @@ namespace OpusMutatum {
 							current = ArgumentParsingMode.LightningPath;
 						else if(arg.Equals("--monomod"))
 							current = ArgumentParsingMode.MonoModPath;
-						else if(arg.Equals("--mono"))
-							RunWithMono = true;
 						break;
 					case ArgumentParsingMode.MappingPath:
 						MappingPaths.Add(arg);
@@ -215,6 +221,7 @@ namespace OpusMutatum {
 							stringsToBeInlined.Add((instr, (int)instr.Previous.Operand));
 				},
 				type => {
+					
 					if(type.IsNested)
 						type.IsNestedPublic = true;
 					else
@@ -377,6 +384,10 @@ namespace OpusMutatum {
 			// if its already valid or its not in intermediary, leave it
 			if(!Intermediary.ContainsKey(name) || Regex.Match(name, "^[a-zA-Z_\\`][a-zA-Z0-9_\\`]*$").Success)
 				return name;
+			// On Linux, changing <Module> to class_0 made Qml entirely nonfunctional.
+			if(Intermediary[name] == "class_0") {
+				return name;
+			}
 			// return intermediary
 			return Intermediary[name];
 		}
@@ -402,6 +413,15 @@ namespace OpusMutatum {
 					if(File.Exists("./MonoMod.RuntimeDetour.HookGen.exe")) {
 						Console.WriteLine("Generating hooks...");
 						RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "MonoMod.RuntimeDetour.HookGen.exe"), "ModdedLightning.exe");
+						if(IsLinux) {
+							// This makes the hook for Lightning, while keeping the original hook for Modded for development.
+							File.Copy("MMHOOK_ModdedLightning.dll", "MMHOOK_Lightning.dll", true);
+							// Fixes the SDL2.dll not found error
+							File.Copy("Lightning.exe.config", "ModdedLightning.exe.config", true);
+							// These are the files you run to make the thing do the thing. yes
+							File.Copy("Lightning.bin.x86", "ModdedLightning.bin.x86", true);
+							File.Copy("Lightning.bin.x86_64", "ModdedLightning.bin.x86_64", true);
+						}
 					}
 				} else {
 					Console.WriteLine("Quintessential not found, skipping merging.");
@@ -428,13 +448,13 @@ namespace OpusMutatum {
 				Console.WriteLine("Failed to run " + file + ", file not found.");
 				return;
 			}
-			if(RunWithMono) {
-				// will this work? who knows.
-				param = file + " " + param;
-				file = "mono";
-			}
 			Process process = new Process();
-			process.StartInfo.FileName = "\"" + file + "\"";
+			// I'm unsure if Windows needs the file to have quotes
+			// Just in case I'm leaving that in;
+			if(!IsLinux) {
+				file = "\"" + file + "\"";
+			}
+			process.StartInfo.FileName = file;
 			process.StartInfo.Arguments = param;
 			process.StartInfo.RedirectStandardOutput = true;
 			process.StartInfo.UseShellExecute = false;
