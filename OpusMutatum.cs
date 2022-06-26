@@ -224,8 +224,8 @@ namespace OpusMutatum {
 
 			// Yells at you if System and Steamworks aren't in the StringDumping directory
 			if(OpSystem != OS.Windows && !File.Exists("./StringDumping/System.dll") && !File.Exists("./StringDumping/Steamworks.NET.dll")) {
-				File.Copy(sourceFileName: "./System.dll", "./StringDumping/System.dll");
-				File.Copy(sourceFileName: "./Steamworks.NET.dll", "./StringDumping/Steamworks.NET.dll");
+				File.Copy("./System.dll", "./StringDumping/System.dll");
+				File.Copy("./Steamworks.NET.dll", "./StringDumping/Steamworks.NET.dll");
 			}
 			Console.WriteLine("Running string dumper...");
 			// run the string dumper automatically
