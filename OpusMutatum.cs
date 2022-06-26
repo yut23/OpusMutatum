@@ -29,24 +29,40 @@ namespace OpusMutatum {
 		static Dictionary<string, string> Mappings = new Dictionary<string, string>();
 		static Dictionary<int, string> Strings = new Dictionary<int, string>();
 
-		// Linux Stuff, since Linux has a few differences
-		static bool IsLinux
-		{
-			get
-			{
-				int p = (int) Environment.OSVersion.Platform;
-				return (p == 4) || (p == 6) || (p == 128);
-			}
-		}
+		// OS enum, since Linux and Mac are different
+		public enum OS {
+			Windows,
+			Linux,
+			Mac
+		};
+		
+		public static OS OpSystem = OS.Windows;
 
 		static void Main(string[] args) {
 			ArgumentParsingMode current = ArgumentParsingMode.Argument;
 			RunAction action = RunAction.Setup;
+
+			switch(Environment.OSVersion.Platform)
+			{
+				case PlatformID.Win32NT:
+				case PlatformID.Win32S:
+				case PlatformID.Win32Windows:
+				case PlatformID.WinCE:
+					OpSystem = OS.Windows;
+					break;
+				case PlatformID.MacOSX:
+					OpSystem = OS.Mac;
+					break;
+				default:
+					OpSystem = OS.Linux;
+					break;
+			};
+
 			foreach(var arg in args) {
 				switch(current) {
 					case ArgumentParsingMode.Argument:
 						// check if its "run", "strings", "intermediary", merge", "setup", "devExe"
-						// or "--mappings", "--intermediary", "--strings", "--lightning", "--monomod", "--intermediaryPath"
+						// or "--mappings", "--intermediary", "--strings", "--lightning", "--monomod", "--intermediaryPath", "--linux", "--mac", --"win"
 						if(arg.Equals("run"))
 							action = RunAction.Run;
 						else if(arg.Equals("strings"))
@@ -69,6 +85,12 @@ namespace OpusMutatum {
 							current = ArgumentParsingMode.LightningPath;
 						else if(arg.Equals("--monomod"))
 							current = ArgumentParsingMode.MonoModPath;
+						else if(arg.Equals("--linux"))
+							OpSystem = OS.Linux;
+						else if(arg.Equals("--mac"))
+							OpSystem = OS.Mac;
+						else if(arg.Equals("--win"))
+							OpSystem = OS.Windows;
 						break;
 					case ArgumentParsingMode.MappingPath:
 						MappingPaths.Add(arg);
@@ -200,6 +222,11 @@ namespace OpusMutatum {
 			Directory.CreateDirectory("./StringDumping");
 			module.Write("./StringDumping/Lightning.exe");
 
+			// Yells at you if System and Steamworks aren't in the StringDumping directory
+			if(OpSystem != OS.Windows && !File.Exists("./StringDumping/System.dll") && !File.Exists("./StringDumping/Steamworks.NET.dll")) {
+				File.Copy("./System.dll", "./StringDumping/System.dll");
+				File.Copy("./Steamworks.NET.dll", "./StringDumping/Steamworks.NET.dll");
+			}
 			Console.WriteLine("Running string dumper...");
 			// run the string dumper automatically
 			RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "StringDumping", "Lightning.exe"), "");
@@ -413,9 +440,7 @@ namespace OpusMutatum {
 					if(File.Exists("./MonoMod.RuntimeDetour.HookGen.exe")) {
 						Console.WriteLine("Generating hooks...");
 						RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "MonoMod.RuntimeDetour.HookGen.exe"), "ModdedLightning.exe");
-						if(IsLinux) {
-							// This makes the hook for Lightning, while keeping the original hook for Modded for development.
-							File.Copy("MMHOOK_ModdedLightning.dll", "MMHOOK_Lightning.dll", true);
+						if(OpSystem != OS.Windows) {
 							// Fixes the SDL2.dll not found error
 							File.Copy("Lightning.exe.config", "ModdedLightning.exe.config", true);
 							// These are the files you run to make the thing do the thing. yes
@@ -450,8 +475,8 @@ namespace OpusMutatum {
 			}
 			Process process = new Process();
 			// I'm unsure if Windows needs the file to have quotes
-			// Just in case I'm leaving that in;
-			if(!IsLinux) {
+			// Just in case I'm leaving that in
+			if(OpSystem == OS.Windows) {
 				file = "\"" + file + "\"";
 			}
 			process.StartInfo.FileName = file;
