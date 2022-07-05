@@ -22,6 +22,7 @@ namespace OpusMutatum {
 		// for strings
 		static string MainMethodName = "#=qbZYLMl8F9alVNlRAO03dOw==.#=qAqM7sFzcD4RfaoNvmBH0bw==";
 		static string StringDeobfName = "#=q7nvcBd_hWOx6ogq743lZkyDITddtOR9ugDU9NV1hD8Y=.#=qb3HWBkVlFVubfVOAwuy8rw==";
+		static string StringDeobfIntermediaryName = "method_131";
 
 		static List<string> MappingPaths = new List<string>();
 		static List<string> IntermediaryPaths = new List<string>();
@@ -69,6 +70,8 @@ namespace OpusMutatum {
 							current = ArgumentParsingMode.MainMethodName;
 						else if(arg.Equals("--stringdeobfname"))
 							current = ArgumentParsingMode.StringDeobfName;
+						else if(arg.Equals("--stringdeobfintname"))
+							current = ArgumentParsingMode.StringDeobfIntermediaryName;
 						else if(arg.Equals("--mono"))
 							RunWithMono = true;
 						break;
@@ -98,6 +101,10 @@ namespace OpusMutatum {
 						break;
 					case ArgumentParsingMode.StringDeobfName:
 						StringDeobfName = arg;
+						current = ArgumentParsingMode.Argument;
+						break;
+					case ArgumentParsingMode.StringDeobfIntermediaryName:
+						StringDeobfIntermediaryName = arg;
 						current = ArgumentParsingMode.Argument;
 						break;
 					default:
@@ -231,7 +238,7 @@ namespace OpusMutatum {
 			List<(Instruction, int)> stringsToBeInlined = new List<(Instruction, int)>();
 			DoRemap(GetIntermediaryForName, Intermediary.ContainsKey, CollectNestedTypes(LightningAssembly.MainModule.Types),
 				(mref, instr) => {
-					if(mref.Name.Equals("method_131") && mref.Parameters.Count == 1)
+					if(mref.Name.Equals(StringDeobfIntermediaryName) && mref.Parameters.Count == 1)
 						if(instr.Previous.OpCode == OpCodes.Ldc_I4)
 							stringsToBeInlined.Add((instr, (int)instr.Previous.Operand));
 				},
@@ -496,7 +503,8 @@ namespace OpusMutatum {
 		}
 
 		enum ArgumentParsingMode{
-			Argument, MappingPath, IntermediaryPath, StringsPath, LightningPath, MonoModPath, MainMethodName, StringDeobfName
+			Argument, MappingPath, IntermediaryPath, StringsPath, LightningPath, MonoModPath,
+			MainMethodName, StringDeobfName, StringDeobfIntermediaryName
 		}
 
 		enum RunAction{
