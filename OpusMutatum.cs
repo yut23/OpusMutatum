@@ -34,16 +34,40 @@ namespace OpusMutatum {
 		static Dictionary<string, string> Mappings = new Dictionary<string, string>();
 		static Dictionary<int, string> Strings = new Dictionary<int, string>();
 
-		static bool RunWithMono = false;
+		// OS enum, since Linux and Mac are different
+		public enum OS {
+			Windows,
+			Linux,
+			Mac
+		};
+		
+		public static OS OpSystem = OS.Windows;
 
 		static void Main(string[] args) {
 			ArgumentParsingMode current = ArgumentParsingMode.Argument;
 			RunAction action = RunAction.Setup;
+
+			switch(Environment.OSVersion.Platform)
+			{
+				case PlatformID.Win32NT:
+				case PlatformID.Win32S:
+				case PlatformID.Win32Windows:
+				case PlatformID.WinCE:
+					OpSystem = OS.Windows;
+					break;
+				case PlatformID.MacOSX:
+					OpSystem = OS.Mac;
+					break;
+				default:
+					OpSystem = OS.Linux;
+					break;
+			};
+
 			foreach(var arg in args) {
 				switch(current) {
 					case ArgumentParsingMode.Argument:
 						// check if its "run", "strings", "intermediary", merge", "setup", "devExe"
-						// or "--mappings", "--intermediary", "--strings", "--lightning", "--monomod", "--intermediaryPath", "--mono"
+						// or "--mappings", "--intermediary", "--strings", "--lightning", "--monomod", "--intermediaryPath", "--linux", "--mac", --"win"
 						if(arg.Equals("run"))
 							action = RunAction.Run;
 						else if(arg.Equals("strings"))
@@ -72,8 +96,12 @@ namespace OpusMutatum {
 							current = ArgumentParsingMode.StringDeobfName;
 						else if(arg.Equals("--stringdeobfintname"))
 							current = ArgumentParsingMode.StringDeobfIntermediaryName;
-						else if(arg.Equals("--mono"))
-							RunWithMono = true;
+						else if(arg.Equals("--linux"))
+							OpSystem = OS.Linux;
+						else if(arg.Equals("--mac"))
+							OpSystem = OS.Mac;
+						else if(arg.Equals("--win"))
+							OpSystem = OS.Windows;
 						break;
 					case ArgumentParsingMode.MappingPath:
 						MappingPaths.Add(arg);
@@ -222,6 +250,11 @@ namespace OpusMutatum {
 			Directory.CreateDirectory("./StringDumping");
 			module.Write("./StringDumping/Lightning.exe");
 
+			// Yells at you if System and Steamworks aren't in the StringDumping directory
+			if(OpSystem != OS.Windows && !File.Exists("./StringDumping/System.dll") && !File.Exists("./StringDumping/Steamworks.NET.dll")) {
+				File.Copy("./System.dll", "./StringDumping/System.dll");
+				File.Copy("./Steamworks.NET.dll", "./StringDumping/Steamworks.NET.dll");
+			}
 			Console.WriteLine("Running string dumper...");
 			// run the string dumper automatically
 			RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "StringDumping", "Lightning.exe"), "");
@@ -243,6 +276,7 @@ namespace OpusMutatum {
 							stringsToBeInlined.Add((instr, (int)instr.Previous.Operand));
 				},
 				type => {
+					
 					if(type.IsNested)
 						type.IsNestedPublic = true;
 					else
@@ -405,6 +439,10 @@ namespace OpusMutatum {
 			// if its already valid or its not in intermediary, leave it
 			if(!Intermediary.ContainsKey(name) || Regex.Match(name, "^[a-zA-Z_\\`][a-zA-Z0-9_\\`]*$").Success)
 				return name;
+			// On Linux, changing <Module> to class_0 made Qml entirely nonfunctional.
+			if(Intermediary[name] == "class_0") {
+				return name;
+			}
 			// return intermediary
 			return Intermediary[name];
 		}
@@ -430,6 +468,13 @@ namespace OpusMutatum {
 					if(File.Exists("./MonoMod.RuntimeDetour.HookGen.exe")) {
 						Console.WriteLine("Generating hooks...");
 						RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "MonoMod.RuntimeDetour.HookGen.exe"), "ModdedLightning.exe");
+						if(OpSystem != OS.Windows) {
+							// Fixes the SDL2.dll not found error
+							File.Copy("Lightning.exe.config", "ModdedLightning.exe.config", true);
+							// These are the files you run to make the thing do the thing. yes
+							File.Copy("Lightning.bin.x86", "ModdedLightning.bin.x86", true);
+							File.Copy("Lightning.bin.x86_64", "ModdedLightning.bin.x86_64", true);
+						}
 					}
 				} else {
 					Console.WriteLine("Quintessential not found, skipping merging.");
@@ -456,13 +501,13 @@ namespace OpusMutatum {
 				Console.WriteLine("Failed to run " + file + ", file not found.");
 				return;
 			}
-			if(RunWithMono) {
-				// will this work? who knows.
-				param = file + " " + param;
-				file = "mono";
-			}
 			Process process = new Process();
-			process.StartInfo.FileName = "\"" + file + "\"";
+			// I'm unsure if Windows needs the file to have quotes
+			// Just in case I'm leaving that in
+			if(OpSystem == OS.Windows) {
+				file = "\"" + file + "\"";
+			}
+			process.StartInfo.FileName = file;
 			process.StartInfo.Arguments = param;
 			process.StartInfo.RedirectStandardOutput = true;
 			process.StartInfo.UseShellExecute = false;
