@@ -19,6 +19,10 @@ namespace OpusMutatum {
 		// for merge
 		static string PathToMonoMod = "./MonoMod.exe";
 
+		// for strings
+		static string MainMethodName = "#=qbZYLMl8F9alVNlRAO03dOw==.#=qAqM7sFzcD4RfaoNvmBH0bw==";
+		static string StringDeobfName = "#=q7nvcBd_hWOx6ogq743lZkyDITddtOR9ugDU9NV1hD8Y=.#=qb3HWBkVlFVubfVOAwuy8rw==";
+
 		static List<string> MappingPaths = new List<string>();
 		static List<string> IntermediaryPaths = new List<string>();
 		static List<string> StringsPaths = new List<string>();
@@ -61,6 +65,10 @@ namespace OpusMutatum {
 							current = ArgumentParsingMode.LightningPath;
 						else if(arg.Equals("--monomod"))
 							current = ArgumentParsingMode.MonoModPath;
+						else if(arg.Equals("--mainmethodname"))
+							current = ArgumentParsingMode.MainMethodName;
+						else if(arg.Equals("--stringdeobfname"))
+							current = ArgumentParsingMode.StringDeobfName;
 						else if(arg.Equals("--mono"))
 							RunWithMono = true;
 						break;
@@ -82,6 +90,14 @@ namespace OpusMutatum {
 						break;
 					case ArgumentParsingMode.MonoModPath:
 						PathToMonoMod = arg;
+						current = ArgumentParsingMode.Argument;
+						break;
+					case ArgumentParsingMode.MainMethodName:
+						MainMethodName = arg;
+						current = ArgumentParsingMode.Argument;
+						break;
+					case ArgumentParsingMode.StringDeobfName:
+						StringDeobfName = arg;
 						current = ArgumentParsingMode.Argument;
 						break;
 					default:
@@ -138,16 +154,20 @@ namespace OpusMutatum {
 			Console.WriteLine("Dumping strings...");
 			LoadLightning();
 			var module = LightningAssembly.MainModule;
-			var parse = module.FindMethod("#=q7nvcBd_hWOx6ogq743lZkyDITddtOR9ugDU9NV1hD8Y=", "#=qb3HWBkVlFVubfVOAwuy8rw==");
+			var ssplit = StringDeobfName.Split('.');
+			var parse = module.FindMethod(ssplit[0], ssplit[1]);
 
 			Console.WriteLine("Finding keys...");
 			// get all the keys this way
 			var refs = new List<Instruction>();
 			foreach(var type in CollectNestedTypes(LightningAssembly.MainModule.Types))
+				if(type != null)
 				foreach(var method in type.Methods)
-					if(method.HasBody)
+					if(method != null)
+					if(method.HasBody && method.Body != null && method.Body.Instructions != null)
 						foreach(var instr in method.Body.Instructions)
-							if(instr.OpCode.Code == Code.Call && instr.Operand is MethodReference operand && operand.Resolve().Equals(parse))
+							if(instr != null && instr.OpCode != null)
+							if(instr.OpCode.Code == Code.Call && instr.Operand is MethodReference operand && operand.Resolve() != null && operand.Resolve().Equals(parse))
 								refs.Add(instr);
 
 			var keys = new HashSet<int>();
@@ -157,7 +177,8 @@ namespace OpusMutatum {
 
 			Console.WriteLine($"Found {keys.Count()} string keys");
 
-			var mainMethod = module.FindMethod("#=qbZYLMl8F9alVNlRAO03dOw==", "#=qAqM7sFzcD4RfaoNvmBH0bw==");
+			var msplit = MainMethodName.Split('.');
+			var mainMethod = module.FindMethod(msplit[0], msplit[1]);
 			var proc = mainMethod.Body.GetILProcessor();
 			var first = proc.Body.Instructions.First();
 
@@ -475,7 +496,7 @@ namespace OpusMutatum {
 		}
 
 		enum ArgumentParsingMode{
-			Argument, MappingPath, IntermediaryPath, StringsPath, LightningPath, MonoModPath
+			Argument, MappingPath, IntermediaryPath, StringsPath, LightningPath, MonoModPath, MainMethodName, StringDeobfName
 		}
 
 		enum RunAction{
