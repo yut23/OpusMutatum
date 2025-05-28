@@ -160,7 +160,7 @@ namespace OpusMutatum {
 					case RunAction.Setup:
 						HandleStrings();
 						HandleIntermediary();
-						HandleMerge();
+						//HandleMerge();
 						break;
 					case RunAction.DevExe:
 						HandleDevExe();
