@@ -13,16 +13,16 @@ namespace OpusMutatum {
 	public class OpusMutatum {
 
 		// For intermediary or devExe
-		static string PathToLightning = "./Lightning.exe";
-		static string PathToModdedLightning = "./ModdedLightning.exe";
+		static string PathToLightning = "./MOLEK-SYNTEZ.exe";
+		static string PathToModdedLightning = "./ModdedVegas.exe";
 
 		// for merge
 		static string PathToMonoMod = "./MonoMod.exe";
 
 		// for strings
-		static string MainMethodName = "#=qbZYLMl8F9alVNlRAO03dOw==.#=qAqM7sFzcD4RfaoNvmBH0bw==";
-		static string StringDeobfName = "#=q7nvcBd_hWOx6ogq743lZkyDITddtOR9ugDU9NV1hD8Y=.#=qb3HWBkVlFVubfVOAwuy8rw==";
-		static string StringDeobfIntermediaryName = "method_131";
+		static string MainMethodName = "#=qT1aDT0BH9MAMk9ou$CNI6A==.#=qcQbxRxcn8_4Cir8VyGkIqw==";
+		static string StringDeobfName = "#=qKfxqY$TA6gEueexQKsavmHkA2a3izjAOtVM62aOCoiY=.#=q8Y5brhygwWHp2WhM9zDVqA==";
+		static string StringDeobfIntermediaryName = "method_458";
 
 		static List<string> MappingPaths = new List<string>();
 		static List<string> IntermediaryPaths = new List<string>();
@@ -174,7 +174,7 @@ namespace OpusMutatum {
 				Console.WriteLine("Error executing task:");
 				Console.WriteLine(e.ToString());
 			}
-			Console.WriteLine("Done.");
+			Console.WriteLine("Done. Press any key to close.");
 			// keep command line open
 			Console.ReadKey();
 		}
@@ -223,7 +223,7 @@ namespace OpusMutatum {
 			Console.WriteLine("Resolving Concat method...");
 			var concat = module.ImportReference(stringt.Resolve().Methods.First(f => f.Parameters.Count == 3 && f.Parameters.All(p => p.ParameterType.FullName.Equals(stringt.FullName))));
 			Console.WriteLine("Getting StreamWriter class...");
-			var streamWriter = module.ImportReference(typeof(StreamWriter)).Resolve();
+			var streamWriter = (new TypeReference("System.IO", "StreamWriter", module, module.TypeSystem.CoreLibrary)).Resolve();
 			Console.WriteLine("Getting StreamWriter constructor...");
 			var streamWriterConstructor = module.ImportReference(streamWriter.Methods.First(m => m.Name.Equals(".ctor") && m.Parameters.Count() == 1 && m.Parameters.All(param => param.ParameterType.FullName.Equals(stringt.FullName))));
 			Console.WriteLine("Getting WriteLine method...");
@@ -248,7 +248,7 @@ namespace OpusMutatum {
 			proc.InsertBefore(first, proc.Create(OpCodes.Ret));
 
 			Directory.CreateDirectory("./StringDumping");
-			module.Write("./StringDumping/Lightning.exe");
+			module.Write("./StringDumping/Vegas.exe");
 
 			// Yells at you if System and Steamworks aren't in the StringDumping directory
 			if(OpSystem != OS.Windows && !File.Exists("./StringDumping/System.dll") && !File.Exists("./StringDumping/Steamworks.NET.dll")) {
@@ -257,7 +257,18 @@ namespace OpusMutatum {
 			}
 			Console.WriteLine("Running string dumper...");
 			// run the string dumper automatically
-			RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "StringDumping", "Lightning.exe"), "");
+			if(OpSystem == OS.Windows) {
+				RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "StringDumping", "Vegas.exe"), "");
+			} else {
+				// Linux needs some extra setup
+				File.Copy("MOLEK-SYNTEZ.exe.config", "StringDumping/Vegas.exe.config", true);
+				File.Copy("MOLEK-SYNTEZ.bin.x86_64", "StringDumping/Vegas.bin.x86_64", true);
+				File.Copy("monoconfig", "StringDumping/monoconfig", true);
+				File.Copy("monomachineconfig", "StringDumping/monomachineconfig", true);
+				File.Copy("mscorlib.dll", "StringDumping/mscorlib.dll", true);
+				File.Copy("System.Core.dll", "StringDumping/System.Core.dll", true);
+				RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "StringDumping", "Vegas.bin.x86_64"), "");
+			}
 			Console.WriteLine();
 		}
 
@@ -291,20 +302,20 @@ namespace OpusMutatum {
 					} else
 						Console.WriteLine($"Missing string for {stringFunc.Item2}");
 
-			LightningAssembly.Write("IntermediaryLightning.exe");
+			LightningAssembly.Write("IntermediaryVegas.exe");
 			Console.WriteLine();
 		}
 
 		static void LoadLightning() {
-			Console.WriteLine("Reading Lightning.exe...");
+			Console.WriteLine("Reading MOLEK-SYNTEZ.exe...");
 			LightningAssembly = AssemblyDefinition.ReadAssembly(PathToLightning);
-			Console.WriteLine(LightningAssembly == null ? "Failed to load Lightning.exe" : "Found Lightning executable: " + LightningAssembly.FullName);
+			Console.WriteLine(LightningAssembly == null ? "Failed to load MOLEK-SYNTEZ.exe" : "Found MOLEK-SYNTEZ executable: " + LightningAssembly.FullName);
 		}
 
 		static void LoadModdedLightning() {
-			Console.WriteLine("Reading modded Lightning.exe...");
+			Console.WriteLine("Reading modded Vegas.exe...");
 			ModdedLightningAssembly = AssemblyDefinition.ReadAssembly(PathToModdedLightning);
-			Console.WriteLine(ModdedLightningAssembly == null ? $"Failed to load modded Lightning.exe at \"{PathToModdedLightning}\"" : "Found modded Lightning executable: " + ModdedLightningAssembly.FullName);
+			Console.WriteLine(ModdedLightningAssembly == null ? $"Failed to load modded Vegas.exe at \"{PathToModdedLightning}\"" : "Found modded Vegas executable: " + ModdedLightningAssembly.FullName);
 		}
 
 		static void LoadStrings() {
@@ -412,6 +423,8 @@ namespace OpusMutatum {
 						Intermediary.Add(method.Name, "method_" + methodIndex);
 						methodIndex++;
 					}
+					// number parameters starting from 0 for each method
+					paramIndex = 0;
 					foreach(var param in method.Parameters) {
 						if(!Intermediary.ContainsKey(param.Name)) {
 							Intermediary.Add(param.Name, "param_" + paramIndex);
@@ -459,21 +472,21 @@ namespace OpusMutatum {
 			if(File.Exists("./MonoMod.exe")) {
 				if(File.Exists("./Quintessential.dll")) {
 					// TODO: check if there's already quintessential with this version
-					Console.WriteLine("Modding Lightning...");
-					RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "MonoMod.exe"), "IntermediaryLightning.exe Quintessential.dll ModdedLightning.exe");
-					if(!File.Exists("./ModdedLightning.exe")) {
+					Console.WriteLine("Modding MOLEK-SYNTEZ...");
+					RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "MonoMod.exe"), "IntermediaryVegas.exe Quintessential.dll ModdedVegas.exe");
+					if(!File.Exists("./ModdedVegas.exe")) {
 						Console.WriteLine("Failed to mod!");
 						return;
 					}
 					if(File.Exists("./MonoMod.RuntimeDetour.HookGen.exe")) {
 						Console.WriteLine("Generating hooks...");
-						RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "MonoMod.RuntimeDetour.HookGen.exe"), "ModdedLightning.exe");
+						RunAndWait(Path.Combine(Directory.GetCurrentDirectory(), "MonoMod.RuntimeDetour.HookGen.exe"), "ModdedVegas.exe");
 						if(OpSystem != OS.Windows) {
 							// Fixes the SDL2.dll not found error
-							File.Copy("Lightning.exe.config", "ModdedLightning.exe.config", true);
+							File.Copy("MOLEK-SYNTEZ.exe.config", "ModdedVegas.exe.config", true);
 							// These are the files you run to make the thing do the thing. yes
-							File.Copy("Lightning.bin.x86", "ModdedLightning.bin.x86", true);
-							File.Copy("Lightning.bin.x86_64", "ModdedLightning.bin.x86_64", true);
+							File.Copy("MOLEK-SYNTEZ.bin.x86", "ModdedVegas.bin.x86", true);
+							File.Copy("MOLEK-SYNTEZ.bin.x86_64", "ModdedVegas.bin.x86_64", true);
 						}
 					}
 				} else {
@@ -491,7 +504,7 @@ namespace OpusMutatum {
 			LoadModdedLightning();
 			LoadMappings();
 			DoRemap(GetNamedForIntermediary, Mappings.ContainsKey, CollectNestedTypes(ModdedLightningAssembly.MainModule.Types), (mref, instr) => { }, typeDef => { });
-			ModdedLightningAssembly.Write("DevLightning.exe");
+			ModdedLightningAssembly.Write("DevVegas.exe");
 			Console.WriteLine();
 		}
 
