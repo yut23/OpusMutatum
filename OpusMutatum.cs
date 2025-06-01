@@ -20,9 +20,7 @@ namespace OpusMutatum {
 		static string PathToMonoMod = "./MonoMod.exe";
 
 		// for strings
-		static string MainMethodName = "#=qT1aDT0BH9MAMk9ou$CNI6A==.#=qcQbxRxcn8_4Cir8VyGkIqw==";
 		static string StringDeobfName = "#=qKfxqY$TA6gEueexQKsavmHkA2a3izjAOtVM62aOCoiY=.#=q8Y5brhygwWHp2WhM9zDVqA==";
-		static string StringDeobfIntermediaryName = "method_458";
 
 		static List<string> MappingPaths = new List<string>();
 		static List<string> IntermediaryPaths = new List<string>();
@@ -90,12 +88,8 @@ namespace OpusMutatum {
 							current = ArgumentParsingMode.LightningPath;
 						else if(arg.Equals("--monomod"))
 							current = ArgumentParsingMode.MonoModPath;
-						else if(arg.Equals("--mainmethodname"))
-							current = ArgumentParsingMode.MainMethodName;
 						else if(arg.Equals("--stringdeobfname"))
 							current = ArgumentParsingMode.StringDeobfName;
-						else if(arg.Equals("--stringdeobfintname"))
-							current = ArgumentParsingMode.StringDeobfIntermediaryName;
 						else if(arg.Equals("--linux"))
 							OpSystem = OS.Linux;
 						else if(arg.Equals("--mac"))
@@ -123,16 +117,8 @@ namespace OpusMutatum {
 						PathToMonoMod = arg;
 						current = ArgumentParsingMode.Argument;
 						break;
-					case ArgumentParsingMode.MainMethodName:
-						MainMethodName = arg;
-						current = ArgumentParsingMode.Argument;
-						break;
 					case ArgumentParsingMode.StringDeobfName:
 						StringDeobfName = arg;
-						current = ArgumentParsingMode.Argument;
-						break;
-					case ArgumentParsingMode.StringDeobfIntermediaryName:
-						StringDeobfIntermediaryName = arg;
 						current = ArgumentParsingMode.Argument;
 						break;
 					default:
@@ -212,8 +198,7 @@ namespace OpusMutatum {
 
 			Console.WriteLine($"Found {keys.Count()} string keys");
 
-			var msplit = MainMethodName.Split('.');
-			var mainMethod = module.FindMethod(msplit[0], msplit[1]);
+			var mainMethod = LightningAssembly.EntryPoint;
 			var proc = mainMethod.Body.GetILProcessor();
 			var first = proc.Body.Instructions.First();
 
@@ -279,10 +264,12 @@ namespace OpusMutatum {
 			LoadStrings();
 			// take Lightning.exe, remap to Intermediary
 			CollectIntermediary();
+			// lookup intermediary name for string deobf function
+			string stringDeobfIntermediaryName = Intermediary[StringDeobfName.Split('.')[1]];
 			List<(Instruction, int)> stringsToBeInlined = new List<(Instruction, int)>();
 			DoRemap(GetIntermediaryForName, Intermediary.ContainsKey, CollectNestedTypes(LightningAssembly.MainModule.Types),
 				(mref, instr) => {
-					if(mref.Name.Equals(StringDeobfIntermediaryName) && mref.Parameters.Count == 1)
+					if(mref.Name.Equals(stringDeobfIntermediaryName) && mref.Parameters.Count == 1)
 						if(instr.Previous.OpCode == OpCodes.Ldc_I4)
 							stringsToBeInlined.Add((instr, (int)instr.Previous.Operand));
 				},
@@ -560,7 +547,7 @@ namespace OpusMutatum {
 
 		enum ArgumentParsingMode{
 			Argument, MappingPath, IntermediaryPath, StringsPath, LightningPath, MonoModPath,
-			MainMethodName, StringDeobfName, StringDeobfIntermediaryName
+			StringDeobfName
 		}
 
 		enum RunAction{
