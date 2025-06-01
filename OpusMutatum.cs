@@ -14,7 +14,7 @@ namespace OpusMutatum {
 
 		// For intermediary or devExe
 		static string PathToLightning = "./MOLEK-SYNTEZ.exe";
-		static string PathToModdedLightning = "./ModdedVegas.exe";
+		static string PathToModdedLightning = "./IntermediaryVegas.exe";
 
 		// for merge
 		static string PathToMonoMod = "./MonoMod.exe";
