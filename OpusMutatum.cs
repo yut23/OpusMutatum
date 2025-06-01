@@ -423,8 +423,6 @@ namespace OpusMutatum {
 						Intermediary.Add(method.Name, "method_" + methodIndex);
 						methodIndex++;
 					}
-					// number parameters starting from 0 for each method
-					paramIndex = 0;
 					foreach(var param in method.Parameters) {
 						if(!Intermediary.ContainsKey(param.Name)) {
 							Intermediary.Add(param.Name, "param_" + paramIndex);
